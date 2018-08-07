@@ -394,9 +394,9 @@ defmodule EventStore.Subscriptions.SubscriptionFsm do
         # Subscriber has ack'd last received event, so send pending.
         [initial | pending] = pending_events
 
-        data = notify_subscriber(initial, data)
+        data = %SubscriptionState{data | pending_events: pending}
 
-        %SubscriptionState{data | pending_events: pending}
+        notify_subscriber(initial, data)
 
       _ ->
         # Subscriber has not yet ack'd last received event, don't send any more.
@@ -415,8 +415,10 @@ defmodule EventStore.Subscriptions.SubscriptionFsm do
 
     case filter(events, data) do
       [] ->
-        # All events filtered, so just ack last event.
-        ack_events(data, last_event_number(events))
+        # All events filtered, so just ack last event and continue notifying pending events.
+        data
+        |> ack_events(last_event_number(events))
+        |> notify_pending_events()
 
       events_to_send ->
         # Send filtered & mapped events to subscriber
@@ -455,7 +457,7 @@ defmodule EventStore.Subscriptions.SubscriptionFsm do
 
     case Enum.member?(filtered_event_numbers, ack + 1) do
       true ->
-        # Next event was filtered, attempt
+        # Next event was filtered, attempt to acknowledge the one after next
         ack_events(data, ack + 1)
 
       false ->
